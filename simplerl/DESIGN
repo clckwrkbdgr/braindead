@@ -17,7 +17,7 @@ Only one item and one monster (PC included) could occupy a tile.
 
 One player character. Some monsters, some items.
 
-Player could wield only one item. It serves as armor, weapon or whatever at once. Item has different stats that must be identified for proper usage.
+Player could wield only one item. It serves as armor, weapon or whatever at once. Item has different stats that must be identified for proper usage. Power to identify one item comes from killing one monster.
 
 All unkilled monsters from current level will result in addition of that exact amount of monster to usual one for the next level.
 
