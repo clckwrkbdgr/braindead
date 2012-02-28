@@ -60,12 +60,11 @@ void close() {
 
 struct Item {
 	char sprite;
-	int damage, protection;
-	bool identified;
-	Item() : sprite(0), damage(0), protection(0),
-		identified(false) {}
-	Item(char s, int d, int p) : sprite(s), damage(d), protection(p),
-		identified(false) {}
+	int dmg, prt;
+	bool id;
+	Item() : sprite(0), dmg(0), prt(0), id(false) {}
+	Item(char s, int d, int p) : sprite(s), dmg(d), prt(p),
+		id(false) {}
 };
 
 struct Cell {
@@ -79,87 +78,78 @@ struct Cell {
 struct Monster {
 	int x, y;
 	char sprite;
-	int hp;
-	int hit_strength;
-	int resistance;
+	int hp, maxhp;
+	int hit;
+	int res;
 	Item * item;
-	Monster() : x(0), y(0), sprite(0), hp(0), hit_strength(0), resistance(0), item(NULL) {}
-	Monster(int px, int py, char s, int hitp, int hit, int res) : x(px), y(py), hp(hitp), sprite(s), hit_strength(hit), resistance(res), item(NULL) {}
+	Monster() : x(0), y(0), sprite(0), hp(0), hit(0), res(0), item(NULL) {}
+	Monster(int px, int py, char s, int hitp, int h, int r) : x(px), y(py), hp(hitp), sprite(s), hit(h), res(r), item(NULL) {}
 };
 
-bool is_alive(Monster * monster) {
-	return monster->hp > 0;
-}
+int level = 0;
+Cell map[W*H];
+Monster monsters[MONSTER_COUNT];
 
-bool get_random_free_drop_spot(Cell * map, int * x, int * y) {
-	for(int i = 0; i < 1000; ++i) {
-		*x = rand() % W;
-		*y = rand() % H;
-		if(map[*x + *y * W].passable && map[*x + *y * W].item == NULL) {
-			return true;
+bool alive(Monster * m) { return m->hp > 0; }
+
+int get_random_free_drop_spot() {
+	for(int c = 0; c < 1000; ++c) {
+		int i = rand() % (W * H - 1) + 1;
+		if(map[i].passable && map[i].item == NULL) {
+			return i;
 		}
 	}
-	return false;
+	return 0;
 }
 
-bool get_random_free_cell(Cell * map, Monster * monsters, int * x, int * y) {
-	for(int i = 0; i < 1000; ++i) {
-		*x = rand() % W;
-		*y = rand() % H;
-		if(map[*x + *y * W].passable) {
+int get_random_free_cell() {
+	for(int c = 0; c < 1000; ++c) {
+		int i = rand() % (W * H - 1) + 1;
+		if(map[i].passable) {
 			bool success = true;
 			for(int j = 0; j < MONSTER_COUNT; ++j) {
-				if(monsters[j].x == *x && monsters[j].y == *y) {
+				if(monsters[j].x + monsters[j].y * W == i) {
 					success = false;
 					break;
 				}
 			}
-			if(success) return true;
+			if(success) return i;
 		}
 	}
-	return false;
+	return 0;
 }
 
-bool generate(Cell * map, Monster * monsters) {
+bool generate() {
 	// Generate and fill map.
-	for(int x = 0; x < W; ++x) {
-		for(int y = 0; y < H; ++y) {
-			if(map[x + y * W].item)
-				delete map[x + y * W].item;
-			map[x + y * W] = (rand() % FLOOR_PROB) ? Cell(FLOOR, true) : Cell(WALL, false);
-		}
+	for(int i = 0; i < W * H; ++i) {
+		if(map[i].item) delete map[i].item;
+		map[i] = (rand() % FLOOR_PROB) ? Cell(FLOOR, true) : Cell(WALL, false);
 	}
 	// Drop items.
 	for(int i = 0; i < ITEM_COUNT; ++i) {
-		int x, y;
-		if(!get_random_free_drop_spot(map, &x, &y)) {
-			return false;
-		}
-		map[x + y * W].item = new Item(ITEM_SPRITE, rand() % MAX_DAMAGE, rand() % MAX_PROTECTION);
+		int pos = get_random_free_drop_spot();
+		if(!pos) return false;
+		map[pos].item = new Item(ITEM_SPRITE, rand() % MAX_DAMAGE, rand() % MAX_PROTECTION);
 	}
 	// Make first monster to be player.
-	if(!is_alive(&monsters[0])) {
-		int x, y;
-		if(!get_random_free_cell(map, monsters, &x, &y)) {
-			return false;
-		}
-		monsters[0] = Monster(x, y, PLAYER, PLAYER_HP, PLAYER_STRENGTH, PLAYER_RESISTANCE);
+	if(!alive(&monsters[0])) {
+		int pos = get_random_free_cell();
+		if(!pos) return false;
+		monsters[0] = Monster(pos % W, pos / W, PLAYER, PLAYER_HP, PLAYER_STRENGTH, PLAYER_RESISTANCE);
 	}
 	// Spawn monsters.
 	for(int i = 1; i < MONSTER_COUNT; ++i) {
 		if(monsters[i].item)
 			delete monsters[i].item;
 
-		int x, y;
-		if(!get_random_free_cell(map, monsters, &x, &y)) {
-			return false;
-		}
-		monsters[i] = Monster(x, y, MONSTER, MONSTER_HP, MONSTER_STRENGTH, MONSTER_RESISTANCE);
+		int pos = get_random_free_cell();
+		if(!pos) return false;
+		monsters[i] = Monster(pos % W, pos / W, MONSTER, MONSTER_HP, MONSTER_STRENGTH, MONSTER_RESISTANCE);
 	}
 	return true;
 }
 
-void free_game(Cell * map, Monster * monsters) {
+void free_game() {
 	for(int i = 0; i < W*H; ++i) {
 		if(map[i].item) {
 			delete map[i].item;
@@ -172,40 +162,47 @@ void free_game(Cell * map, Monster * monsters) {
 	}
 }
 
-void wield(Cell * map, Monster * monster) {
-	Item * tmp = map[monster->x + monster->y * W].item;
-	map[monster->x + monster->y * W].item = monster->item;
-	monster->item = tmp;
+void wield(Monster * m) {
+	Item * t = map[m->x + m->y * W].item;
+	map[m->x + m->y * W].item = m->item;
+	m->item = t;
 }
 
-void hit(Monster * off, Monster * def) {
-	int damage = off->item ? (off->hit_strength + off->item->damage) : off->hit_strength;
-	int resistance = def->item ? (def->resistance + def->item->protection) : def->resistance;
-	if(damage > resistance) {
-		def->hp -= damage - resistance;
-		if(def->hp < 0) {
-			def->hp = 0;
+int damage(Monster * m) {
+	return m->item ? (m->hit + m->item->dmg) : m->hit;
+}
+
+int resistance(Monster * m) {
+	return m->item ? (m->res + m->item->prt) : m->res;
+}
+
+void hit(Monster * o, Monster * d) {
+	int dmg = damage(o) - resistance(d);
+	if(dmg > 0) {
+		d->hp -= dmg;
+		if(d->hp < 0) {
+			d->hp = 0;
 		}
 	}
 }
 
-void move_monster(Cell * map, Monster * monsters, Monster * walker, int sx, int sy, int MAX_HP) {
+void move(Monster * m, int sx, int sy, int MAX_HP) {
 	if(sx == 0 && sy == 0) return;
 
-	int new_x = walker->x + sx;
-	int new_y = walker->y + sy;
-	if(new_x >= 0 && new_x < W && new_y >= 0 && new_y < H) {
-		if(!map[new_x + new_y * W].passable) {
+	int x = m->x + sx;
+	int y = m->y + sy;
+	if(x >= 0 && x < W && y >= 0 && y < H) {
+		if(!map[x + y * W].passable) {
 			return;
 		}
 		bool success = true;
 		for(int i = 0; i < MONSTER_COUNT; ++i) {
-			if(is_alive(&monsters[i]) && monsters[i].x == new_x && monsters[i].y == new_y) {
-				hit(walker, &monsters[i]);
-				if(!is_alive(&monsters[i])) {
-					walker->hp += HP_UNIT;
-					if(walker->hp > MAX_HP)
-						walker->hp = MAX_HP;
+			if(alive(&monsters[i]) && monsters[i].x == x && monsters[i].y == y) {
+				hit(m, &monsters[i]);
+				if(!alive(&monsters[i])) {
+					m->hp += HP_UNIT;
+					if(m->hp > MAX_HP)
+						m->hp = MAX_HP;
 				}
 				success = false;
 				break;
@@ -213,28 +210,24 @@ void move_monster(Cell * map, Monster * monsters, Monster * walker, int sx, int 
 		}
 
 		if(success) {
-			walker->x = new_x;
-			walker->y = new_y;
+			m->x = x;
+			m->y = y;
 		}
 	}
 }
 
-void identify(Monster * monster) {
-	if(monster->hp <= HP_UNIT) return;
-	Item * item = monster->item;
-	if(item && !item->identified) {
-		item->identified = true;
-		monster->hp -= HP_UNIT;
+void identify(Monster * m) {
+	if(m->hp <= HP_UNIT) return;
+	Item * i = m->item;
+	if(i && !i->id) {
+		i->id = true;
+		m->hp -= HP_UNIT;
 	}
 }
 
 void run() {
-	int level = 0;
-	Cell map[W*H];
-	Monster monsters[MONSTER_COUNT];
-
-	if(!generate(map, monsters)) {
-		free_game(map, monsters);
+	if(!generate()) {
+		free_game();
 		return;
 	}
 
@@ -243,13 +236,13 @@ void run() {
 		// Status line
 		Item * item = monsters[0].item;
 		if(item) {
-			if(item->identified) {
-				mvprintw(H, 0, STATUS_WITH_ITEM_ID, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, monsters[0].hit_strength + item->damage, monsters[0].resistance + item->protection, item->sprite);
+			if(item->id) {
+				mvprintw(H, 0, STATUS_WITH_ITEM_ID, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, damage(&monsters[0]), resistance(&monsters[0]), item->sprite);
 			} else {
-				mvprintw(H, 0, STATUS_WITH_ITEM, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, monsters[0].hit_strength, monsters[0].resistance, item->sprite);
+				mvprintw(H, 0, STATUS_WITH_ITEM, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, monsters[0].hit, monsters[0].res, item->sprite);
 			}
 		} else {
-			mvprintw(H, 0, STATUS_WITHOUT_ITEM, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, monsters[0].hit_strength, monsters[0].resistance);
+			mvprintw(H, 0, STATUS_WITHOUT_ITEM, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, monsters[0].hit, monsters[0].res);
 		}
 
 		// Draw map.
@@ -263,9 +256,8 @@ void run() {
 			}
 		}
 		for(int i = 0; i < MONSTER_COUNT; ++i) {
-			if(!is_alive(&monsters[i])) continue;
-			int sprite = monsters[i].sprite;
-			mvaddch(monsters[i].y, monsters[i].x, sprite);
+			if(!alive(&monsters[i])) continue;
+			mvaddch(monsters[i].y, monsters[i].x, monsters[i].sprite);
 		}
 
 		refresh();
@@ -276,21 +268,21 @@ void run() {
 		// Read keys and do actions.
 		int ch = getch();
 		switch(ch) {
-			case QUIT: free_game(map, monsters); return;
-			case UP: move_monster(map, monsters, &monsters[0], 0, -1, PLAYER_HP); break;
-			case DOWN: move_monster(map, monsters, &monsters[0], 0, 1, PLAYER_HP); break;
-			case LEFT: move_monster(map, monsters, &monsters[0], -1, 0, PLAYER_HP); break;
-			case RIGHT: move_monster(map, monsters, &monsters[0], 1, 0, PLAYER_HP); break;
-			case UP_RIGHT: move_monster(map, monsters, &monsters[0], 1, -1, PLAYER_HP); break;
-			case DOWN_RIGHT: move_monster(map, monsters, &monsters[0], 1, 1, PLAYER_HP); break;
-			case UP_LEFT: move_monster(map, monsters, &monsters[0], -1, -1, PLAYER_HP); break;
-			case DOWN_LEFT: move_monster(map, monsters, &monsters[0], -1, 1, PLAYER_HP); break;
+			case QUIT: free_game(); return;
+			case UP: move(&monsters[0], 0, -1, PLAYER_HP); break;
+			case DOWN: move(&monsters[0], 0, 1, PLAYER_HP); break;
+			case LEFT: move(&monsters[0], -1, 0, PLAYER_HP); break;
+			case RIGHT: move(&monsters[0], 1, 0, PLAYER_HP); break;
+			case UP_RIGHT: move(&monsters[0], 1, -1, PLAYER_HP); break;
+			case DOWN_RIGHT: move(&monsters[0], 1, 1, PLAYER_HP); break;
+			case UP_LEFT: move(&monsters[0], -1, -1, PLAYER_HP); break;
+			case DOWN_LEFT: move(&monsters[0], -1, 1, PLAYER_HP); break;
 			case WAIT: break;
 			case IDENTIFY: identify(&monsters[0]); break;
-			case WIELD: wield(map, &monsters[0]); break;
+			case WIELD: wield(&monsters[0]); break;
 			case NEXT: 
-				if(!generate(map, monsters)) {
-					free_game(map, monsters);
+				if(!generate()) {
+					free_game();
 					return;
 				}
 				++level;
