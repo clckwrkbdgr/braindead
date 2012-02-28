@@ -6,8 +6,16 @@ const int W = 80;
 const int H = 24;
 const int MONSTER_COUNT = 32;
 const int ITEM_COUNT = 32;
+const int OBSTACLE_COUNT = 80;
 const int MAX_DAMAGE = 10;
 const int MAX_PROTECTION = 10;
+const int PLAYER_STRENGTH = 3;
+const int PLAYER_RESISTANCE = 1;
+const int PLAYER_HP = 100;
+const int MONSTER_STRENGTH = 3;
+const int MONSTER_RESISTANCE = 1;
+const int MONSTER_HP = 20;
+const int HP_UNIT = 10;
 
 const int FLOOR_COUNT = 3;
 char FLOOR[FLOOR_COUNT + 1] = ".,_";
@@ -23,17 +31,21 @@ const int QUIT = 'q';
 const int UP = 'k';
 const int DOWN = 'j';
 const int LEFT = 'h';
-const int RIGHT = 'l'; // TODO yubn
+const int RIGHT = 'l';
+const int UP_RIGHT = 'u';
+const int DOWN_RIGHT = 'n';
+const int UP_LEFT = 'y';
+const int DOWN_LEFT = 'b';
 const int WAIT = '.';
 const int WIELD = 'w';
 const int IDENTIFY = 'i';
 
 const char * STATUS_WITH_ITEM =
-	"turns: %d lvl:%d x:%d y:%d mana:%d  item:%c                             ";
+	"trn:%d lvl:%d (%d,%d) hp:%d/%d str:%d res:%d item:%c            ";
 const char * STATUS_WITH_ITEM_ID =
-	"turns: %d lvl:%d x:%d y:%d mana:%d  item:%c dmg:%d prt:%d               ";
+	"trn:%d lvl:%d (%d,%d) hp:%d/%d str:%d res:%d item:%c id'd       ";
 const char * STATUS_WITHOUT_ITEM =
-	"turns: %d lvl:%d x:%d y:%d mana:%d                                      ";
+	"trn:%d lvl:%d (%d,%d) hp:%d/%d str:%d res:%d                    ";
 
 void init() {
 	srand(time(NULL));
@@ -63,14 +75,18 @@ struct Cell {
 	bool passable;
 	Item * item;
 	Cell() : sprite(0), passable(true), item(NULL) {}
+	Cell(char s, bool p) : sprite(s), passable(p), item(NULL) {}
 };
 
 struct Monster {
 	int x, y;
 	char sprite;
+	int hp;
+	int hit_strength;
+	int resistance;
 	Item * item;
-	Monster() : x(0), y(0), sprite(0), item(NULL) {}
-	Monster(int px, int py, char s) : x(px), y(py), sprite(s), item(NULL) {}
+	Monster() : x(0), y(0), sprite(0), hp(0), hit_strength(0), resistance(0), item(NULL) {}
+	Monster(int px, int py, char s, int hitp, int hit, int res) : x(px), y(py), hp(hitp), sprite(s), hit_strength(hit), resistance(res), item(NULL) {}
 };
 
 bool get_random_free_drop_spot(Cell * map, int * x, int * y) {
@@ -102,24 +118,26 @@ bool get_random_free_cell(Cell * map, Monster * monsters, int * x, int * y) {
 	return false;
 }
 
-void run() {
-	int level = 0;
-	int turns = 0;
-	int mana = 10;
-	Cell map[W*H];
-	Monster monsters[MONSTER_COUNT];
-
+bool generate(Cell * map, Monster * monsters) {
 	// Generate and fill map.
 	for(int x = 0; x < W; ++x) {
 		for(int y = 0; y < H; ++y) {
 			map[x + y * W].sprite = FLOOR[rand() % FLOOR_COUNT];
 		}
 	}
+	// Generate map.
+	for(int i = 0; i < OBSTACLE_COUNT; ++i) {
+		int x, y;
+		if(!get_random_free_cell(map, monsters, &x, &y)) {
+			return false;
+		}
+		map[x + y * W] = Cell(WALL[rand() % WALL_COUNT], false);
+	}
 	// Drop items.
 	for(int i = 0; i < ITEM_COUNT; ++i) {
 		int x, y;
 		if(!get_random_free_drop_spot(map, &x, &y)) {
-			return;
+			return false;
 		}
 		map[x + y * W].item = new Item(ITEM_SPRITE[rand() % ITEM_SPRITE_COUNT], rand() % MAX_DAMAGE, rand() % MAX_PROTECTION);
 	}
@@ -127,11 +145,101 @@ void run() {
 	for(int i = 0; i < MONSTER_COUNT; ++i) {
 		int x, y;
 		if(!get_random_free_cell(map, monsters, &x, &y)) {
+			return false;
+		}
+		monsters[i] = Monster(x, y, MONSTER, MONSTER_HP, MONSTER_STRENGTH, MONSTER_RESISTANCE);
+	}
+	// Make first monster to be player.
+	monsters[0].sprite = PLAYER;
+	monsters[0].hp = PLAYER_HP;
+	monsters[0].hit_strength = PLAYER_STRENGTH;
+	monsters[0].resistance = PLAYER_RESISTANCE;
+	return true;
+}
+
+void free_game(Cell * map, Monster * monsters) {
+	for(int i = 0; i < W*H; ++i) {
+		if(map[i].item) {
+			delete map[i].item;
+		}
+	}
+	for(int i = 0; i < MONSTER_COUNT; ++i) {
+		if(monsters[i].item) {
+			delete monsters[i].item;
+		}
+	}
+}
+
+void wield(Cell * map, Monster * monster) {
+	Item * tmp = map[monster->x + monster->y * W].item;
+	map[monster->x + monster->y * W].item = monster->item;
+	monster->item = tmp;
+}
+
+void hit(Monster * off, Monster * def) {
+	int damage = off->item ? (off->hit_strength + off->item->damage) : off->hit_strength;
+	int resistance = def->item ? (def->resistance + def->item->protection) : def->resistance;
+	if(damage > resistance) {
+		def->hp -= damage - resistance;
+		if(def->hp < 0) {
+			def->hp = 0;
+		}
+	}
+}
+
+bool is_alive(Monster * monster) {
+	return monster->hp > 0;
+}
+
+void move_monster(Cell * map, Monster * monsters, Monster * walker, int sx, int sy, int MAX_HP) {
+	if(sx == 0 && sy == 0) return;
+
+	int new_x = walker->x + sx;
+	int new_y = walker->y + sy;
+	if(new_x >= 0 && new_x < W && new_y >= 0 && new_y < H) {
+		if(!map[new_x + new_y * W].passable) {
 			return;
 		}
-		monsters[i] = Monster(x, y, MONSTER);
+		bool success = true;
+		for(int j = 0; j < MONSTER_COUNT; ++j) {
+			if(is_alive(&monsters[j]) && monsters[j].x == new_x && monsters[j].y == new_y) {
+				hit(walker, &monsters[j]);
+				if(!is_alive(&monsters[j])) {
+					walker->hp += HP_UNIT;
+					if(walker->hp > MAX_HP)
+						walker->hp = MAX_HP;
+				}
+				success = false;
+				break;
+			}
+		}
+
+		if(success) {
+			walker->x = new_x;
+			walker->y = new_y;
+		}
 	}
-	monsters[0].sprite = PLAYER; // Make first monster to be player.
+}
+
+void identify(Monster * monster) {
+	if(monster->hp <= HP_UNIT) return;
+	Item * item = monster->item;
+	if(item && !item->identified) {
+		item->identified = true;
+		monster->hp -= HP_UNIT;
+	}
+}
+
+void run() {
+	int level = 0;
+	int turns = 0;
+	Cell map[W*H];
+	Monster monsters[MONSTER_COUNT];
+
+	if(!generate(map, monsters)) {
+		free_game(map, monsters);
+		return;
+	}
 
 	// Loop.
 	while(true) {
@@ -139,12 +247,12 @@ void run() {
 		Item * item = monsters[0].item;
 		if(item) {
 			if(item->identified) {
-				mvprintw(H, 0, STATUS_WITH_ITEM_ID, turns, level, monsters[0].x, monsters[0].y, mana, item->sprite, item->damage, item->protection);
+				mvprintw(H, 0, STATUS_WITH_ITEM_ID, turns, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, monsters[0].hit_strength + item->damage, monsters[0].resistance + item->protection, item->sprite);
 			} else {
-				mvprintw(H, 0, STATUS_WITH_ITEM, turns, level, monsters[0].x, monsters[0].y, mana, item->sprite);
+				mvprintw(H, 0, STATUS_WITH_ITEM, turns, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, monsters[0].hit_strength, monsters[0].resistance, item->sprite);
 			}
 		} else {
-			mvprintw(H, 0, STATUS_WITHOUT_ITEM, turns, level, monsters[0].x, monsters[0].y, mana);
+			mvprintw(H, 0, STATUS_WITHOUT_ITEM, turns, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, monsters[0].hit_strength, monsters[0].resistance);
 		}
 
 		// Draw map.
@@ -158,60 +266,37 @@ void run() {
 			}
 		}
 		for(int i = 0; i < MONSTER_COUNT; ++i) {
+			if(!is_alive(&monsters[i])) continue;
 			int sprite = monsters[i].sprite;
 			mvaddch(monsters[i].y, monsters[i].x, sprite);
 		}
 
 		refresh();
 
+		// TODO AI for monsters.
+		// TODO different sprites for monsters. different pre-settings fot them
+		// TODO Stairs >, going down and saving monsters.
+
 		// Read keys and do actions.
 		int ch = getch();
-		int new_x = monsters[0].x, new_y = monsters[0].y;
 		bool turn_ended = true;
 		switch(ch) {
-			case QUIT: return;
-			case UP: --new_y; break;
-			case DOWN: ++new_y; break;
-			case LEFT: --new_x; break;
-			case RIGHT: ++new_x; break;
+			case QUIT: free_game(map, monsters); return;
+			case UP: move_monster(map, monsters, &monsters[0], 0, -1, PLAYER_HP); break;
+			case DOWN: move_monster(map, monsters, &monsters[0], 0, 1, PLAYER_HP); break;
+			case LEFT: move_monster(map, monsters, &monsters[0], -1, 0, PLAYER_HP); break;
+			case RIGHT: move_monster(map, monsters, &monsters[0], 1, 0, PLAYER_HP); break;
+			case UP_RIGHT: move_monster(map, monsters, &monsters[0], 1, -1, PLAYER_HP); break;
+			case DOWN_RIGHT: move_monster(map, monsters, &monsters[0], 1, 1, PLAYER_HP); break;
+			case UP_LEFT: move_monster(map, monsters, &monsters[0], -1, -1, PLAYER_HP); break;
+			case DOWN_LEFT: move_monster(map, monsters, &monsters[0], -1, 1, PLAYER_HP); break;
 			case WAIT: break;
-			case IDENTIFY: {
-				Item * item = monsters[0].item;
-				if(mana > 0 && item && !item->identified) {
-					item->identified = true;
-					--mana; // TODO gather mana from dead monsters.
-				}
-				break;
-			}
-			case WIELD: {
-				Item * tmp = map[monsters[0].x + monsters[0].y * W].item;
-				map[monsters[0].x + monsters[0].y * W].item = monsters[0].item;
-				monsters[0].item = tmp;
-				break;
-			}
+			case IDENTIFY: identify(&monsters[0]); break;
+			case WIELD: wield(map, &monsters[0]); break;
 			default: turn_ended = false;
 		}
 		if(turn_ended) ++turns;
-
-		if(new_x != monsters[0].x || new_y != monsters[0].y) {
-			if(new_x >= 0 && new_x < W && new_y >= 0 && new_y < H) {
-				bool success = true;
-				for(int j = 0; j < MONSTER_COUNT; ++j) {
-					if(monsters[j].x == new_x && monsters[j].y == new_y) {
-						success = false;
-						break;
-					}
-				}
-				
-				if(success) {
-					monsters[0].x = new_x;
-					monsters[0].y = new_y;
-				}
-			}
-		}
 	}
-
-	// TODO delete items.
 }
 
 int main() {
