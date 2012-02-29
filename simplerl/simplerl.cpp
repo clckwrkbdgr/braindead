@@ -4,7 +4,7 @@
 
 const int W = 80;
 const int H = 24;
-const int MONSTER_COUNT = 3;
+const int MONSTER_COUNT_PER_LEVEL = 3;
 const int ITEM_COUNT = 3;
 const int FLOOR_PROB = 100;
 const int MAX_DAMAGE = 10;
@@ -24,26 +24,6 @@ const char ITEM_SPRITE = '(';
 const char PLAYER = '@';
 const char MONSTER = 'M';
 
-const int QUIT = 'q';
-const int NEXT = '>';
-const int UP = 'k';
-const int DOWN = 'j';
-const int LEFT = 'h';
-const int RIGHT = 'l';
-const int UP_RIGHT = 'u';
-const int DOWN_RIGHT = 'n';
-const int UP_LEFT = 'y';
-const int DOWN_LEFT = 'b';
-const int WAIT = '.';
-const int WIELD = 'w';
-const int IDENTIFY = 'i';
-
-const char * STATUS_WITH_ITEM =
-	"lvl:%d (%d,%d) hp:%d/%d str:%d res:%d item:%c            ";
-const char * STATUS_WITH_ITEM_ID =
-	"lvl:%d (%d,%d) hp:%d/%d str:%d res:%d item:%c id'd       ";
-const char * STATUS_WITHOUT_ITEM =
-	"lvl:%d (%d,%d) hp:%d/%d str:%d res:%d                    ";
 
 void init() {
 	srand(time(NULL));
@@ -82,13 +62,14 @@ struct Monster {
 	int hit;
 	int res;
 	Item * item;
-	Monster() : x(0), y(0), sprite(0), hp(0), hit(0), res(0), item(NULL) {}
-	Monster(int px, int py, char s, int hitp, int h, int r) : x(px), y(py), hp(hitp), sprite(s), hit(h), res(r), item(NULL) {}
+	Monster() : x(0), y(0), sprite(0), hp(0), maxhp(0), hit(0), res(0), item(NULL) {}
+	Monster(int px, int py, char s, int hitp, int h, int r) : x(px), y(py), hp(hitp), maxhp(hp), sprite(s), hit(h), res(r), item(NULL) {}
 };
 
 int level = 0;
 Cell map[W*H];
-Monster monsters[MONSTER_COUNT];
+int monster_count = MONSTER_COUNT_PER_LEVEL + 1; // One for player.
+Monster * monsters = NULL; //[MONSTER_COUNT];
 
 bool alive(Monster * m) { return m->hp > 0; }
 
@@ -107,7 +88,7 @@ int get_random_free_cell() {
 		int i = rand() % (W * H - 1) + 1;
 		if(map[i].passable) {
 			bool success = true;
-			for(int j = 0; j < MONSTER_COUNT; ++j) {
+			for(int j = 0; j < monster_count; ++j) {
 				if(monsters[j].x + monsters[j].y * W == i) {
 					success = false;
 					break;
@@ -131,21 +112,40 @@ bool generate() {
 		if(!pos) return false;
 		map[pos].item = new Item(ITEM_SPRITE, rand() % MAX_DAMAGE, rand() % MAX_PROTECTION);
 	}
+
+	if(!monsters) monsters = new Monster[monster_count];
+
+	int old_monster_count = monster_count;
+	int alive_monsters = 0;
+	for(int i = 0; i < monster_count; ++i) if(alive(&monsters[i])) ++alive_monsters;
+	monster_count = alive_monsters + MONSTER_COUNT_PER_LEVEL;
+	Monster * new_monsters = new Monster[monster_count];
+
 	// Make first monster to be player.
-	if(!alive(&monsters[0])) {
+	if(alive(&monsters[0])) {
+		new_monsters[0] = monsters[0];
+	} else {
 		int pos = get_random_free_cell();
 		if(!pos) return false;
-		monsters[0] = Monster(pos % W, pos / W, PLAYER, PLAYER_HP, PLAYER_STRENGTH, PLAYER_RESISTANCE);
+		new_monsters[0] = Monster(pos % W, pos / W, PLAYER, PLAYER_HP, PLAYER_STRENGTH, PLAYER_RESISTANCE);
 	}
 	// Spawn monsters.
-	for(int i = 1; i < MONSTER_COUNT; ++i) {
-		if(monsters[i].item)
-			delete monsters[i].item;
-
+	alive_monsters = 1;
+	for(int i = 1; i < old_monster_count; ++i) {
+		if(alive(&monsters[i])) {
+			new_monsters[alive_monsters++] = monsters[i];
+		} else {
+			if(monsters[i].item)
+				delete monsters[i].item;
+		}
+	}
+	for(int i = alive_monsters; i < monster_count; ++i) {
 		int pos = get_random_free_cell();
 		if(!pos) return false;
-		monsters[i] = Monster(pos % W, pos / W, MONSTER, MONSTER_HP, MONSTER_STRENGTH, MONSTER_RESISTANCE);
+		new_monsters[i] = Monster(pos % W, pos / W, MONSTER, MONSTER_HP, MONSTER_STRENGTH, MONSTER_RESISTANCE);
 	}
+	delete []monsters;
+	monsters = new_monsters;
 	return true;
 }
 
@@ -155,11 +155,13 @@ void free_game() {
 			delete map[i].item;
 		}
 	}
-	for(int i = 0; i < MONSTER_COUNT; ++i) {
+	for(int i = 0; i < monster_count; ++i) {
 		if(monsters[i].item) {
 			delete monsters[i].item;
 		}
 	}
+	delete []monsters;
+	monsters = NULL;
 }
 
 void wield(Monster * m) {
@@ -186,7 +188,7 @@ void hit(Monster * o, Monster * d) {
 	}
 }
 
-void move(Monster * m, int sx, int sy, int MAX_HP) {
+void move(Monster * m, int sx, int sy) {
 	if(sx == 0 && sy == 0) return;
 
 	int x = m->x + sx;
@@ -196,13 +198,13 @@ void move(Monster * m, int sx, int sy, int MAX_HP) {
 			return;
 		}
 		bool success = true;
-		for(int i = 0; i < MONSTER_COUNT; ++i) {
+		for(int i = 0; i < monster_count; ++i) {
 			if(alive(&monsters[i]) && monsters[i].x == x && monsters[i].y == y) {
 				hit(m, &monsters[i]);
 				if(!alive(&monsters[i])) {
 					m->hp += HP_UNIT;
-					if(m->hp > MAX_HP)
-						m->hp = MAX_HP;
+					if(m->hp > m->maxhp)
+						m->hp = m->maxhp;
 				}
 				success = false;
 				break;
@@ -235,15 +237,11 @@ void run() {
 	while(true) {
 		// Status line
 		Item * item = monsters[0].item;
-		if(item) {
-			if(item->id) {
-				mvprintw(H, 0, STATUS_WITH_ITEM_ID, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, damage(&monsters[0]), resistance(&monsters[0]), item->sprite);
-			} else {
-				mvprintw(H, 0, STATUS_WITH_ITEM, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, monsters[0].hit, monsters[0].res, item->sprite);
-			}
-		} else {
-			mvprintw(H, 0, STATUS_WITHOUT_ITEM, level, monsters[0].x, monsters[0].y, monsters[0].hp, PLAYER_HP, monsters[0].hit, monsters[0].res);
-		}
+		mvprintw(H, 0, "lvl:%d (%d,%d) hp:%d/%d str:%d res:%d item:%c%c   ",
+				level, monsters[0].x, monsters[0].y, monsters[0].hp, monsters[0].maxhp,
+				(item && item->id) ? damage(&monsters[0]) : monsters[0].hit,
+				(item && item->id) ? resistance(&monsters[0]) : monsters[0].res,
+				item ? item->sprite : ' ', (item && item->id) ? ' ' : '?');
 
 		// Draw map.
 		for(int x = 0; x < W; ++x) {
@@ -255,7 +253,7 @@ void run() {
 				mvaddch(y, x, sprite);
 			}
 		}
-		for(int i = 0; i < MONSTER_COUNT; ++i) {
+		for(int i = 0; i < monster_count; ++i) {
 			if(!alive(&monsters[i])) continue;
 			mvaddch(monsters[i].y, monsters[i].x, monsters[i].sprite);
 		}
@@ -263,24 +261,23 @@ void run() {
 		refresh();
 
 		// TODO AI for monsters.
-		// TODO saving monsters.
 
 		// Read keys and do actions.
 		int ch = getch();
 		switch(ch) {
-			case QUIT: free_game(); return;
-			case UP: move(&monsters[0], 0, -1, PLAYER_HP); break;
-			case DOWN: move(&monsters[0], 0, 1, PLAYER_HP); break;
-			case LEFT: move(&monsters[0], -1, 0, PLAYER_HP); break;
-			case RIGHT: move(&monsters[0], 1, 0, PLAYER_HP); break;
-			case UP_RIGHT: move(&monsters[0], 1, -1, PLAYER_HP); break;
-			case DOWN_RIGHT: move(&monsters[0], 1, 1, PLAYER_HP); break;
-			case UP_LEFT: move(&monsters[0], -1, -1, PLAYER_HP); break;
-			case DOWN_LEFT: move(&monsters[0], -1, 1, PLAYER_HP); break;
-			case WAIT: break;
-			case IDENTIFY: identify(&monsters[0]); break;
-			case WIELD: wield(&monsters[0]); break;
-			case NEXT: 
+			case 'q': free_game(); return;
+			case 'k': move(&monsters[0], 0, -1); break;
+			case 'j': move(&monsters[0], 0, 1); break;
+			case 'h': move(&monsters[0], -1, 0); break;
+			case 'l': move(&monsters[0], 1, 0); break;
+			case 'u': move(&monsters[0], 1, -1); break;
+			case 'n': move(&monsters[0], 1, 1); break;
+			case 'y': move(&monsters[0], -1, -1); break;
+			case 'b': move(&monsters[0], -1, 1); break;
+			case '.': break;
+			case 'i': identify(&monsters[0]); break;
+			case 'w': wield(&monsters[0]); break;
+			case '>': 
 				if(!generate()) {
 					free_game();
 					return;
@@ -289,6 +286,7 @@ void run() {
 				break;
 			default: break;
 		}
+
 	}
 }
 
