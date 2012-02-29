@@ -17,12 +17,10 @@ const int MONSTER_RESISTANCE = 1;
 const int MONSTER_HP = 20;
 const int HP_UNIT = 10;
 
-// TODO different sprites for monsters. different pre-settings for them
 const char FLOOR = '.';
 const char WALL = '#';
 const char PLAYER = '@';
 const char MONSTER = 'M';
-
 
 void init() {
 	srand(time(NULL));
@@ -59,14 +57,20 @@ struct Monster {
 	int hit;
 	int res;
 	Item * item;
-	Monster() : x(0), y(0), sprite(0), hp(0), maxhp(0), hit(0), res(0), item(NULL) {}
-	Monster(int px, int py, char s, int hitp, int h, int r) : x(px), y(py), hp(hitp), maxhp(hp), sprite(s), hit(h), res(r), item(NULL) {}
+	int(*ai)(Monster*);
+	Monster() : x(0), y(0), sprite(0), hp(0), maxhp(0), hit(0), res(0), item(NULL), ai(NULL) {}
+	Monster(int px, int py, char s, int hitp, int h, int r) : x(px), y(py), hp(hitp), maxhp(hp), sprite(s), hit(h), res(r), item(NULL), ai(NULL) {}
 };
+
+// TODO different AIs for monsters;
+int player_controller(Monster*) {
+	return getch();
+}
 
 int level = 0;
 Cell map[W*H];
 int monster_count = MONSTER_COUNT_PER_LEVEL + 1; // One for player.
-Monster * monsters = NULL; //[MONSTER_COUNT];
+Monster * monsters = NULL;
 
 bool alive(Monster * m) { return m->hp > 0; }
 
@@ -97,6 +101,33 @@ int get_random_free_cell() {
 	return 0;
 }
 
+const int MODEL_COUNT = 10;
+Monster models[MODEL_COUNT];
+
+void make_models() {
+	models[0] = Monster(0, 0, PLAYER, PLAYER_HP, PLAYER_STRENGTH, PLAYER_RESISTANCE);
+	models[0].ai = player_controller;
+	char sprite = 'A';
+	for(int i = 1; i < MODEL_COUNT && sprite <= 'Z'; ++i, ++sprite) {
+		models[i] = Monster(0, 0, sprite, MONSTER_HP, MONSTER_STRENGTH, MONSTER_RESISTANCE);
+	}
+}
+
+bool spawn(Monster * m, bool p = false) {
+	int pos = get_random_free_cell();
+	if(!pos) return false;
+	if(!alive(m)) {
+		if(p) {
+			*m = models[0];
+		} else {
+			*m = models[1 + rand() % (MODEL_COUNT - 1)];
+		}
+	}
+	m->x = pos % W;
+	m->y = pos / W;
+	return true;
+}
+
 bool generate() {
 	// Generate and fill map.
 	for(int i = 0; i < W * H; ++i) {
@@ -121,25 +152,24 @@ bool generate() {
 	// Make first monster to be player.
 	if(alive(&monsters[0])) {
 		new_monsters[0] = monsters[0];
+		spawn(&new_monsters[0], true);
 	} else {
-		int pos = get_random_free_cell();
-		if(!pos) return false;
-		new_monsters[0] = Monster(pos % W, pos / W, PLAYER, PLAYER_HP, PLAYER_STRENGTH, PLAYER_RESISTANCE);
+		spawn(&new_monsters[0], true);
 	}
 	// Spawn monsters.
 	alive_monsters = 1;
 	for(int i = 1; i < old_monster_count; ++i) {
 		if(alive(&monsters[i])) {
-			new_monsters[alive_monsters++] = monsters[i];
+			new_monsters[alive_monsters] = monsters[i];
+			spawn(&new_monsters[alive_monsters]);
+			++alive_monsters;
 		} else {
 			if(monsters[i].item)
 				delete monsters[i].item;
 		}
 	}
 	for(int i = alive_monsters; i < monster_count; ++i) {
-		int pos = get_random_free_cell();
-		if(!pos) return false;
-		new_monsters[i] = Monster(pos % W, pos / W, MONSTER, MONSTER_HP, MONSTER_STRENGTH, MONSTER_RESISTANCE);
+		spawn(&new_monsters[i]);
 	}
 	delete []monsters;
 	monsters = new_monsters;
@@ -238,10 +268,9 @@ bool act(Monster * monster, int ch) {
 		case 'i': identify(monster); break;
 		case 'w': wield(monster); break;
 
-		case 'q': free_game(); return false;
+		case 'q': return false;
 		case '>': 
 			if(!generate()) {
-				free_game();
 				return false;
 			}
 			++level;
@@ -252,8 +281,8 @@ bool act(Monster * monster, int ch) {
 }
 
 void run() {
+	make_models();
 	if(!generate()) {
-		free_game();
 		return;
 	}
 
@@ -284,18 +313,19 @@ void run() {
 
 		refresh();
 
-		// TODO AI for monsters.
-
 		// Read keys and do actions.
-		int ch = getch();
-		if(!act(&monsters[0], ch))
-			return;
+		for(int i = 0; i < monster_count; ++i) {
+			if(!monsters[i].ai) continue;
+			if(!act(&monsters[i], monsters[i].ai(&monsters[i])))
+				return;
+		}
 	}
 }
 
 int main() {
 	init();
 	run();
+	free_game();
 	close();
 	return 0;
 }
