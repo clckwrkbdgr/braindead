@@ -227,6 +227,33 @@ void identify(Monster * m) {
 	}
 }
 
+bool act(Monster * monster, int ch) {
+	switch(ch) {
+		case 'k': move(monster, 0, -1); break;
+		case 'j': move(monster, 0, 1); break;
+		case 'h': move(monster, -1, 0); break;
+		case 'l': move(monster, 1, 0); break;
+		case 'u': move(monster, 1, -1); break;
+		case 'n': move(monster, 1, 1); break;
+		case 'y': move(monster, -1, -1); break;
+		case 'b': move(monster, -1, 1); break;
+		case '.': return true;
+		case 'i': identify(monster); break;
+		case 'w': wield(monster); break;
+
+		case 'q': free_game(); return false;
+		case '>': 
+			if(!generate()) {
+				free_game();
+				return false;
+			}
+			++level;
+			break;
+		default: break;
+	}
+	return true;
+}
+
 void run() {
 	if(!generate()) {
 		free_game();
@@ -264,29 +291,8 @@ void run() {
 
 		// Read keys and do actions.
 		int ch = getch();
-		switch(ch) {
-			case 'q': free_game(); return;
-			case 'k': move(&monsters[0], 0, -1); break;
-			case 'j': move(&monsters[0], 0, 1); break;
-			case 'h': move(&monsters[0], -1, 0); break;
-			case 'l': move(&monsters[0], 1, 0); break;
-			case 'u': move(&monsters[0], 1, -1); break;
-			case 'n': move(&monsters[0], 1, 1); break;
-			case 'y': move(&monsters[0], -1, -1); break;
-			case 'b': move(&monsters[0], -1, 1); break;
-			case '.': break;
-			case 'i': identify(&monsters[0]); break;
-			case 'w': wield(&monsters[0]); break;
-			case '>': 
-				if(!generate()) {
-					free_game();
-					return;
-				}
-				++level;
-				break;
-			default: break;
-		}
-
+		if(!act(&monsters[0], ch))
+			return;
 	}
 }
 
