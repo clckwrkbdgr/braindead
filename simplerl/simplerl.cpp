@@ -20,7 +20,6 @@ const int HP_UNIT = 10;
 // TODO different sprites for monsters. different pre-settings for them
 const char FLOOR = '.';
 const char WALL = '#';
-const char ITEM_SPRITE = '(';
 const char PLAYER = '@';
 const char MONSTER = 'M';
 
@@ -41,10 +40,8 @@ void close() {
 struct Item {
 	char sprite;
 	int dmg, prt;
-	bool id;
-	Item() : sprite(0), dmg(0), prt(0), id(false) {}
-	Item(char s, int d, int p) : sprite(s), dmg(d), prt(p),
-		id(false) {}
+	Item() : sprite(0), dmg(0), prt(0) {}
+	Item(int d, int p) : sprite('?'), dmg(d), prt(p) {}
 };
 
 struct Cell {
@@ -110,7 +107,7 @@ bool generate() {
 	for(int i = 0; i < ITEM_COUNT; ++i) {
 		int pos = get_random_free_drop_spot();
 		if(!pos) return false;
-		map[pos].item = new Item(ITEM_SPRITE, rand() % MAX_DAMAGE, rand() % MAX_PROTECTION);
+		map[pos].item = new Item(rand() % MAX_DAMAGE, rand() % MAX_PROTECTION);
 	}
 
 	if(!monsters) monsters = new Monster[monster_count];
@@ -221,8 +218,8 @@ void move(Monster * m, int sx, int sy) {
 void identify(Monster * m) {
 	if(m->hp <= HP_UNIT) return;
 	Item * i = m->item;
-	if(i && !i->id) {
-		i->id = true;
+	if(i && i->sprite == '?') {
+		i->sprite = (i->dmg > i->prt) ? ')' : ']';
 		m->hp -= HP_UNIT;
 	}
 }
@@ -264,11 +261,11 @@ void run() {
 	while(true) {
 		// Status line
 		Item * item = monsters[0].item;
-		mvprintw(H, 0, "lvl:%d (%d,%d) hp:%d/%d str:%d res:%d item:%c%c   ",
+		mvprintw(H, 0, "lvl:%d (%d,%d) hp:%d/%d str:%d res:%d item:%c   ",
 				level, monsters[0].x, monsters[0].y, monsters[0].hp, monsters[0].maxhp,
-				(item && item->id) ? damage(&monsters[0]) : monsters[0].hit,
-				(item && item->id) ? resistance(&monsters[0]) : monsters[0].res,
-				item ? item->sprite : ' ', (item && item->id) ? ' ' : '?');
+				(item && item->sprite != '?') ? damage(&monsters[0]) : monsters[0].hit,
+				(item && item->sprite != '?') ? resistance(&monsters[0]) : monsters[0].res,
+				item ? item->sprite : ' ');
 
 		// Draw map.
 		for(int x = 0; x < W; ++x) {
