@@ -1,6 +1,8 @@
 #include <ncurses.h>
 #include <cstdlib>
-#include <time.h>
+#include <cmath>
+#include <ctime>
+#include <algorithm>
 
 const int W = 80;
 const int H = 24;
@@ -9,18 +11,20 @@ const int ITEM_COUNT = 3;
 const int FLOOR_PROB = 100;
 const int MAX_DAMAGE = 10;
 const int MAX_PROTECTION = 10;
+
 const int PLAYER_STRENGTH = 3;
 const int PLAYER_RESISTANCE = 1;
 const int PLAYER_HP = 100;
+const int PLAYER_FOV = 10;
 const int MONSTER_STRENGTH = 3;
 const int MONSTER_RESISTANCE = 1;
 const int MONSTER_HP = 20;
+const int MONSTER_FOV = 5;
 const int HP_UNIT = 10;
 
 const char FLOOR = '.';
 const char WALL = '#';
 const char PLAYER = '@';
-const char MONSTER = 'M';
 
 void init() {
 	srand(time(NULL));
@@ -56,21 +60,40 @@ struct Monster {
 	int hp, maxhp;
 	int hit;
 	int res;
+	int fov;
 	Item * item;
 	int(*ai)(Monster*);
-	Monster() : x(0), y(0), sprite(0), hp(0), maxhp(0), hit(0), res(0), item(NULL), ai(NULL) {}
-	Monster(int px, int py, char s, int hitp, int h, int r) : x(px), y(py), hp(hitp), maxhp(hp), sprite(s), hit(h), res(r), item(NULL), ai(NULL) {}
+	Monster() : x(0), y(0), sprite(0), hp(0), maxhp(0), hit(0), res(0), fov(0), item(NULL), ai(NULL) {}
+	Monster(int px, int py, char s, int hitp, int h, int r, int vision)
+		: x(px), y(py), hp(hitp), maxhp(hp), sprite(s), hit(h), res(r), fov(vision), item(NULL), ai(NULL) {}
 };
 
-// TODO different AIs for monsters;
-int player_controller(Monster*) {
-	return getch();
+int distance(Monster * a, Monster * b) {
+	return std::max(abs(a->x - b->x), abs(a->y - b->y));
+}
+
+int sign(int v) {
+	return v > 0 ? 1 : (v < 0 ? -1 : 0);
 }
 
 int level = 0;
 Cell map[W*H];
 int monster_count = MONSTER_COUNT_PER_LEVEL + 1; // One for player.
 Monster * monsters = NULL;
+
+int player_controller(Monster*) {
+	return getch();
+}
+
+int ai_watcher(Monster * m) {
+	char map[10] = "ykuh.lbjn";
+	if(distance(&monsters[0], m) <= m->fov) {
+		int sx = sign(monsters[0].x - m->x);
+		int sy = sign(monsters[0].y - m->y);
+		return map[(sx+1) + (sy+1)*3];
+	}
+	return '.';
+}
 
 bool alive(Monster * m) { return m->hp > 0; }
 
@@ -105,11 +128,12 @@ const int MODEL_COUNT = 10;
 Monster models[MODEL_COUNT];
 
 void make_models() {
-	models[0] = Monster(0, 0, PLAYER, PLAYER_HP, PLAYER_STRENGTH, PLAYER_RESISTANCE);
+	models[0] = Monster(0, 0, PLAYER, PLAYER_HP, PLAYER_STRENGTH, PLAYER_RESISTANCE, PLAYER_FOV);
 	models[0].ai = player_controller;
 	char sprite = 'A';
 	for(int i = 1; i < MODEL_COUNT && sprite <= 'Z'; ++i, ++sprite) {
-		models[i] = Monster(0, 0, sprite, MONSTER_HP, MONSTER_STRENGTH, MONSTER_RESISTANCE);
+		models[i] = Monster(0, 0, sprite, MONSTER_HP, MONSTER_STRENGTH, MONSTER_RESISTANCE, MONSTER_FOV);
+		models[i].ai = ai_watcher;
 	}
 }
 
@@ -265,6 +289,7 @@ bool act(Monster * monster, int ch) {
 		case 'y': move(monster, -1, -1); break;
 		case 'b': move(monster, -1, 1); break;
 		case '.': return true;
+
 		case 'i': identify(monster); break;
 		case 'w': wield(monster); break;
 
