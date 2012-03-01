@@ -6,9 +6,9 @@
 
 const int W = 80;
 const int H = 24;
-const int MONSTER_COUNT_PER_LEVEL = 3;
-const int ITEM_COUNT = 3;
-const int FLOOR_PROB = 100;
+const int MONSTER_COUNT_PER_LEVEL = W * H / 100;
+const int ITEM_COUNT = W * H / 100;
+const int FLOOR_PROB = 10;
 const int MAX_DAMAGE = 10;
 const int MAX_PROTECTION = 10;
 
@@ -76,6 +76,7 @@ int sign(int v) {
 	return v > 0 ? 1 : (v < 0 ? -1 : 0);
 }
 
+static const char move_map[10] = "ykuh.lbjn";
 int level = 0;
 Cell map[W*H];
 int monster_count = MONSTER_COUNT_PER_LEVEL + 1; // One for player.
@@ -85,15 +86,26 @@ int player_controller(Monster*) {
 	return getch();
 }
 
-int ai_watcher(Monster * m) {
-	char map[10] = "ykuh.lbjn";
+int ai_hunter(Monster * m) {
 	if(distance(&monsters[0], m) <= m->fov) {
 		int sx = sign(monsters[0].x - m->x);
 		int sy = sign(monsters[0].y - m->y);
-		return map[(sx+1) + (sy+1)*3];
+		return move_map[(sx+1) + (sy+1)*3];
+	}
+	return move_map[rand() % 9];
+}
+
+int ai_watcher(Monster * m) {
+	if(distance(&monsters[0], m) <= m->fov) {
+		int sx = sign(monsters[0].x - m->x);
+		int sy = sign(monsters[0].y - m->y);
+		return move_map[(sx+1) + (sy+1)*3];
 	}
 	return '.';
 }
+
+const int AI_COUNT = 2;
+int (*AI[AI_COUNT])(Monster*) = {ai_watcher, ai_hunter};
 
 bool alive(Monster * m) { return m->hp > 0; }
 
@@ -133,7 +145,7 @@ void make_models() {
 	char sprite = 'A';
 	for(int i = 1; i < MODEL_COUNT && sprite <= 'Z'; ++i, ++sprite) {
 		models[i] = Monster(0, 0, sprite, MONSTER_HP, MONSTER_STRENGTH, MONSTER_RESISTANCE, MONSTER_FOV);
-		models[i].ai = ai_watcher;
+		models[i].ai = AI[rand() % AI_COUNT];
 	}
 }
 
