@@ -1,4 +1,4 @@
-TARGET=simplerl
+TARGET=braindead
 
 all: $(TARGET)
 

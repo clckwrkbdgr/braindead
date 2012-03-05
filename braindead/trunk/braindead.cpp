@@ -1,3 +1,8 @@
+/** braindead - simple roguelike game.
+ * author antifin 2011
+ * version 0.9.0
+ * license WTFPLv2
+ */
 #include <ncurses.h>
 #include <cstdlib>
 #include <cmath>
