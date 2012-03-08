@@ -86,24 +86,25 @@ int level = 0;
 Cell map[W*H];
 int monster_count = MONSTER_COUNT_PER_LEVEL + 1; // One for player.
 Monster * monsters = NULL;
+#define PL (&monsters[0])
 
 int player_controller(Monster*) {
 	return getch();
 }
 
 int ai_hunter(Monster * m) {
-	if(distance(&monsters[0], m) <= m->fov) {
-		int sx = sign(monsters[0].x - m->x);
-		int sy = sign(monsters[0].y - m->y);
+	if(distance(PL, m) <= m->fov) {
+		int sx = sign(PL->x - m->x);
+		int sy = sign(PL->y - m->y);
 		return move_map[(sx+1) + (sy+1)*3];
 	}
 	return move_map[rand() % 9];
 }
 
 int ai_watcher(Monster * m) {
-	if(distance(&monsters[0], m) <= m->fov) {
-		int sx = sign(monsters[0].x - m->x);
-		int sy = sign(monsters[0].y - m->y);
+	if(distance(PL, m) <= m->fov) {
+		int sx = sign(PL->x - m->x);
+		int sy = sign(PL->y - m->y);
 		return move_map[(sx+1) + (sy+1)*3];
 	}
 	return '.';
@@ -158,11 +159,8 @@ bool spawn(Monster * m, bool p = false) {
 	int pos = get_random_free_cell();
 	if(!pos) return false;
 	if(!alive(m)) {
-		if(p) {
-			*m = models[0];
-		} else {
-			*m = models[1 + rand() % (MODEL_COUNT - 1)];
-		}
+		int i = p ? 0 : 1 + rand() % (MODEL_COUNT - 1);
+		*m = models[i];
 	}
 	m->x = pos % W;
 	m->y = pos / W;
@@ -190,13 +188,12 @@ bool generate() {
 	monster_count = alive_monsters + MONSTER_COUNT_PER_LEVEL;
 	Monster * new_monsters = new Monster[monster_count];
 
-	// Make first monster to be player.
-	if(alive(&monsters[0])) {
+	// Make first monster to be PL.
+	if(alive(PL)) {
 		new_monsters[0] = monsters[0];
-		spawn(&new_monsters[0], true);
-	} else {
-		spawn(&new_monsters[0], true);
 	}
+	spawn(&new_monsters[0], true);
+
 	// Spawn monsters.
 	alive_monsters = 1;
 	for(int i = 1; i < old_monster_count; ++i) {
@@ -331,11 +328,11 @@ void run() {
 	// Loop.
 	while(true) {
 		// Status line
-		Item * item = monsters[0].item;
+		Item * item = PL->item;
 		mvprintw(H, 0, "lvl:%d (%d,%d) hp:%d/%d str:%d res:%d item:%c   ",
-				level, monsters[0].x, monsters[0].y, monsters[0].hp, monsters[0].maxhp,
-				(item && item->sprite != '?') ? damage(&monsters[0]) : monsters[0].hit,
-				(item && item->sprite != '?') ? resistance(&monsters[0]) : monsters[0].res,
+				level, PL->x, PL->y, PL->hp, PL->maxhp,
+				(item && item->sprite != '?') ? damage(PL) : PL->hit,
+				(item && item->sprite != '?') ? resistance(PL) : PL->res,
 				item ? item->sprite : ' ');
 
 		// Draw map.
