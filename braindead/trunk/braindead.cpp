@@ -5,9 +5,26 @@
  */
 #include <ncurses.h>
 #include <cstdlib>
-#include <cmath>
 #include <ctime>
-#include <algorithm>
+
+void init() {
+	srand(time(NULL));
+	initscr();
+	cbreak();
+	keypad(stdscr, true);
+	noecho();
+}
+
+void close() {
+	echo();
+	endwin();
+}
+
+int rnd(int max) {return rand() % max;}
+int getkb() {return getch();}
+int put(int x, int y, int sprite) {mvaddch(y, x, sprite);}
+void repaint() {refresh();}
+//mvprintw
 
 const int W = 80;
 const int H = 24;
@@ -31,33 +48,21 @@ const char FLOOR = '.';
 const char WALL = '#';
 const char PLAYER = '@';
 
-void init() {
-	srand(time(NULL));
-	initscr();
-	cbreak();
-	keypad(stdscr, true);
-	noecho();
-}
-
-void close() {
-	echo();
-	endwin();
-}
-
 struct Item {
+	bool alive;
 	char sprite;
 	int dmg, prt;
-	Item() : sprite(0), dmg(0), prt(0) {}
-	Item(int d, int p) : sprite('?'), dmg(d), prt(p) {}
+	Item() : alive(false), sprite(0), dmg(0), prt(0) {}
+	Item(int d, int p) : alive(true), sprite('?'), dmg(d), prt(p) {}
 };
 
 struct Cell {
 	char sprite;
-	bool passable;
 	Item * item;
-	Cell() : sprite(0), passable(true), item(NULL) {}
-	Cell(char s, bool p) : sprite(s), passable(p), item(NULL) {}
+	Cell() : sprite(0), item(NULL) {}
+	Cell(char s, bool p) : sprite(s), item(NULL) {}
 };
+bool passable(Cell*cell) {return cell->sprite==FLOOR;}
 
 struct Monster {
 	int x, y;
@@ -73,13 +78,14 @@ struct Monster {
 		: x(px), y(py), hp(hitp), maxhp(hp), sprite(s), hit(h), res(r), fov(vision), item(NULL), ai(NULL) {}
 };
 
+#define ABS(a) (a<0?-a:a)
 int distance(Monster * a, Monster * b) {
-	return std::max(abs(a->x - b->x), abs(a->y - b->y));
+	int x = ABS(a->x - b->x);
+	int y = ABS(a->y - b->y);
+	return x>y?x:y;
 }
 
-int sign(int v) {
-	return v > 0 ? 1 : (v < 0 ? -1 : 0);
-}
+#define SIGN(v) (v>0?1:(v<0?-1:0))
 
 static const char move_map[10] = "ykuh.lbjn";
 int level = 0;
@@ -89,22 +95,22 @@ Monster * monsters = NULL;
 #define PL (&monsters[0])
 
 int player_controller(Monster*) {
-	return getch();
+	return getkb();
 }
 
 int ai_hunter(Monster * m) {
 	if(distance(PL, m) <= m->fov) {
-		int sx = sign(PL->x - m->x);
-		int sy = sign(PL->y - m->y);
+		int sx = SIGN(PL->x - m->x);
+		int sy = SIGN(PL->y - m->y);
 		return move_map[(sx+1) + (sy+1)*3];
 	}
-	return move_map[rand() % 9];
+	return move_map[rnd(9)];
 }
 
 int ai_watcher(Monster * m) {
 	if(distance(PL, m) <= m->fov) {
-		int sx = sign(PL->x - m->x);
-		int sy = sign(PL->y - m->y);
+		int sx = SIGN(PL->x - m->x);
+		int sy = SIGN(PL->y - m->y);
 		return move_map[(sx+1) + (sy+1)*3];
 	}
 	return '.';
@@ -117,8 +123,8 @@ bool alive(Monster * m) { return m->hp > 0; }
 
 int get_random_free_drop_spot() {
 	for(int c = 0; c < 1000; ++c) {
-		int i = rand() % (W * H - 1) + 1;
-		if(map[i].passable && map[i].item == NULL) {
+		int i = rnd(W * H - 1) + 1;
+		if(passable(&map[i]) && map[i].item == NULL) {
 			return i;
 		}
 	}
@@ -127,8 +133,8 @@ int get_random_free_drop_spot() {
 
 int get_random_free_cell() {
 	for(int c = 0; c < 1000; ++c) {
-		int i = rand() % (W * H - 1) + 1;
-		if(map[i].passable) {
+		int i = rnd(W * H - 1) + 1;
+		if(passable(&map[i])) {
 			bool success = true;
 			for(int j = 0; j < monster_count; ++j) {
 				if(monsters[j].x + monsters[j].y * W == i) {
@@ -151,7 +157,7 @@ void make_models() {
 	char sprite = 'A';
 	for(int i = 1; i < MODEL_COUNT && sprite <= 'Z'; ++i, ++sprite) {
 		models[i] = Monster(0, 0, sprite, MONSTER_HP, MONSTER_STRENGTH, MONSTER_RESISTANCE, MONSTER_FOV);
-		models[i].ai = AI[rand() % AI_COUNT];
+		models[i].ai = AI[rnd(AI_COUNT)];
 	}
 }
 
@@ -159,7 +165,7 @@ bool spawn(Monster * m, bool p = false) {
 	int pos = get_random_free_cell();
 	if(!pos) return false;
 	if(!alive(m)) {
-		int i = p ? 0 : 1 + rand() % (MODEL_COUNT - 1);
+		int i = p ? 0 : 1 + rnd(MODEL_COUNT - 1);
 		*m = models[i];
 	}
 	m->x = pos % W;
@@ -171,13 +177,13 @@ bool generate() {
 	// Generate and fill map.
 	for(int i = 0; i < W * H; ++i) {
 		if(map[i].item) delete map[i].item;
-		map[i] = (rand() % FLOOR_PROB) ? Cell(FLOOR, true) : Cell(WALL, false);
+		map[i] = rnd(FLOOR_PROB) ? Cell(FLOOR, true) : Cell(WALL, false);
 	}
 	// Drop items.
 	for(int i = 0; i < ITEM_COUNT; ++i) {
 		int pos = get_random_free_drop_spot();
 		if(!pos) return false;
-		map[pos].item = new Item(rand() % MAX_DAMAGE, rand() % MAX_PROTECTION);
+		map[pos].item = new Item(rnd(MAX_DAMAGE), rnd(MAX_PROTECTION));
 	}
 
 	if(!monsters) monsters = new Monster[monster_count];
@@ -259,7 +265,7 @@ void move(Monster * m, int sx, int sy) {
 	int x = m->x + sx;
 	int y = m->y + sy;
 	if(x >= 0 && x < W && y >= 0 && y < H) {
-		if(!map[x + y * W].passable) {
+		if(!passable(&map[x + y * W])) {
 			return;
 		}
 		bool success = true;
@@ -342,15 +348,15 @@ void run() {
 				if(map[x + y * W].item) {
 					sprite = map[x + y * W].item->sprite;
 				}
-				mvaddch(y, x, sprite);
+				put(x,y,sprite);
 			}
 		}
 		for(int i = 0; i < monster_count; ++i) {
 			if(!alive(&monsters[i])) continue;
-			mvaddch(monsters[i].y, monsters[i].x, monsters[i].sprite);
+			put(monsters[i].x, monsters[i].y, monsters[i].sprite);
 		}
 
-		refresh();
+		repaint();
 
 		// Read keys and do actions.
 		for(int i = 0; i < monster_count; ++i) {
