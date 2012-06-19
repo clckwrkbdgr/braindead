@@ -8,12 +8,12 @@
 #include <ctime>
 
 // Interface.
-void init() {srand(time(NULL));initscr();cbreak();keypad(stdscr,true);noecho();}
-void close() {echo();endwin();}
-int rnd(int max) {return rand() % max;}
-int getkb() {return getch();}
-int put(int x, int y, int sprite) {mvaddch(y, x, sprite);}
-void finish_paint() {refresh();}
+void init(){srand(time(NULL));initscr();cbreak();keypad(stdscr,true);noecho();}
+void close(){echo();endwin();}
+int rnd(int max){return rand()%max;}
+int getkb(){return getch();}
+int put(int x,int y,int s){mvaddch(y,x,s);}
+void finish_paint(){refresh();}
 
 // Constants.
 const int W = 80;
