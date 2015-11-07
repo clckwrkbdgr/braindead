@@ -6,43 +6,86 @@ extern const char * test_program;
 
 void brainfuck(char*m,void(*i)(char*),void(*o)(char*),const char*c)
 {
-	//[ord(x) for x in "+-<>[],."]
-		//[43, 45, 60, 62, 91, 93, 44, 46]
+	// (43, '0b101011'),
+	// (45, '0b101101'),
+	// (46, '0b101110'),
+	// (44, '0b101100'),
+	// (60, '0b111100'),
+	// (62, '0b111110'),
+	// (91, '0b1011011'),
+	// (93, '0b1011101')
+	int l = 0;
 	while(*c) {
+		int x = 0;
 		switch(*c) {
-			case 43: ++*m; break;
-			case 45: --*m; break;
-			case 60: m--; break;
-			case 62: m++; break;
-			case 46: o(m); break;
-			case 44: i(m); break;
-			case 91:
-					  if(*m == 0) {
-						  int counter = 0;
-						  while(counter >= 0) {
-							  ++c;
-							  if(*c == '[') {
-								  ++counter;
-							  } else if(*c == ']'){
-								  --counter;
-							  }
-						  }
-					  }
-					  break;
-			case 93:
-					  if(*m != 0) {
-						  int counter = 0;
-						  while(counter >= 0) {
-							  --c;
-							  if(*c == ']') {
-								  ++counter;
-							  } else if(*c == '['){
-								  --counter;
-							  }
-						  }
-					  }
-					  break;
+			case 43: x = 1; break;
+			case 45: x = 3; break;
+			case 46: x = 4; break;
+			case 44: x = 8; break;
+			case 60: x = 16; break;
+			case 62: x = 48; break;
+			case 91: x = 64; break;
+			case 93: x = 192; break;
 		}
+		if(x & 1) { *m += 2-x; }
+		else if(x & 12) { (x&4?o:i)(m); }
+		else if(x & 16) { m+=(x>>4)-2; }
+		else if(x & 64) {
+			if(!*m != !!(x&128)) {
+				l = 0;
+				while(l+1) {
+					c+=2-(x>>6);
+					if(*c==91 || *c==93) {
+						l+=(92-*c)*(2-(x>>6));
+					}
+				}
+			}
+		}
+		/*
+		if(*c == 43 || *c == 45) { *m += 44-*c; }
+		else if(*c == 46 || *c == 44) { ((*c-44)?o:i)(m); }
+		else if(*c == 60 || *c == 62) { m+=*c-61; }
+		else if(*c == 91 || *c == 93) {
+			if(!*m != !(93 - *c)) {
+				int d = 92-*c;
+				l = d;
+				while(l) {
+					c+=l>0?1:-1;
+					if(*c==91 || *c==93) {
+						l+=(92-*c)*(l>0?d:-d);
+					}
+				}
+			}
+		}
+		*/
+		/*
+		else if(*c == 91) {
+			if(!*m != 0) {
+				l = 0;
+				while(l+1) {
+					++c;
+					if(*c == 91) {
+						++l;
+					} else if(*c == 93){
+						--l;
+					}
+				}
+			}
+		}
+		else if(*c == 93) {
+			if(!*m != 1) {
+				l = 0;
+				while(l+1) {
+					--c;
+					if(*c == 93) {
+						++l;
+					} else if(*c == 91){
+						--l;
+					}
+				}
+			}
+		}
+		*/
 		++c;
 	}
 	/*
