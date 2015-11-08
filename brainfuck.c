@@ -6,87 +6,21 @@ extern const char * test_program;
 
 void brainfuck(char*m,void(*i)(char*),void(*o)(char*),const char*c)
 {
-	// (43, '0b101011'),
-	// (45, '0b101101'),
-	// (46, '0b101110'),
-	// (44, '0b101100'),
-	// (60, '0b111100'),
-	// (62, '0b111110'),
-	// (91, '0b1011011'),
-	// (93, '0b1011101')
 	int l = 0;
 	while(*c) {
 		int x = 0;
+		// TODO conversion from command char to byte of commands
 		switch(*c) {
-			case 43: x = 1; break;
-			case 45: x = 3; break;
-			case 46: x = 4; break;
+			case 43: x = 64; break;
 			case 44: x = 8; break;
+			case 45: x = 192; break;
+			case 46: x = 4; break;
 			case 60: x = 16; break;
 			case 62: x = 48; break;
-			case 91: x = 64; break;
-			case 93: x = 192; break;
+			case 91: x = 1; break;
+			case 93: x = 3; break;
 		}
-		if(x & 1) { *m += 2-x; }
-		else if(x & 12) { (x&4?o:i)(m); }
-		else if(x & 16) { m+=(x>>4)-2; }
-		else if(x & 64) {
-			if(!*m != !!(x&128)) {
-				l = 0;
-				while(l+1) {
-					c+=2-(x>>6);
-					if(*c==91 || *c==93) {
-						l+=(92-*c)*(2-(x>>6));
-					}
-				}
-			}
-		}
-		/*
-		if(*c == 43 || *c == 45) { *m += 44-*c; }
-		else if(*c == 46 || *c == 44) { ((*c-44)?o:i)(m); }
-		else if(*c == 60 || *c == 62) { m+=*c-61; }
-		else if(*c == 91 || *c == 93) {
-			if(!*m != !(93 - *c)) {
-				int d = 92-*c;
-				l = d;
-				while(l) {
-					c+=l>0?1:-1;
-					if(*c==91 || *c==93) {
-						l+=(92-*c)*(l>0?d:-d);
-					}
-				}
-			}
-		}
-		*/
-		/*
-		else if(*c == 91) {
-			if(!*m != 0) {
-				l = 0;
-				while(l+1) {
-					++c;
-					if(*c == 91) {
-						++l;
-					} else if(*c == 93){
-						--l;
-					}
-				}
-			}
-		}
-		else if(*c == 93) {
-			if(!*m != 1) {
-				l = 0;
-				while(l+1) {
-					--c;
-					if(*c == 93) {
-						++l;
-					} else if(*c == 91){
-						--l;
-					}
-				}
-			}
-		}
-		*/
-		++c;
+		(l+=l||!*m!=!!(x&2)?(x&1?2-x:0):0)?0:(x&12?(x&4?o:i)(m),0:(*(m+=(x&16?x>>4:2)-2)+=2-(x&64?x>>6:2))),*(c+=(l>=0)-(l<0));
 	}
 	/*
 	int l=0,f; while(l ?  ( ( !*m==!f&&(c+=1-f,l+=*c==(93-f) ?  -1 : *c==(91+f))
@@ -108,6 +42,60 @@ void output_string(char *c) {
 }
 
 int main(void) {
+	// (40, '0b0101000'),
+	//
+	// (43, '0b0101011'),
+	// (45, '0b0101101'),
+	// (46, '0b0101110'),
+	// (44, '0b0101100'),
+	// (60, '0b0111100'),
+	// (62, '0b0111110'),
+	// (91, '0b1011011'),
+	// (93, '0b1011101')
+	char t[9] = "-+,.<>[]";
+	int u[8] = {192, 64, 8, 4, 16, 48, 1, 3};
+	int i = 0;
+	for(i = 0; i < 8; ++i) {
+		char * c = t + i;
+
+		int x = 0;
+		// TODO conversion from command char to byte of commands
+		if((*c&40)==40) {
+			switch(*c) {
+				case 43: x = 64; break;
+				case 44: x = 8; break;
+				case 45: x = 192; break;
+				case 46: x = 4; break;
+
+				case 60: x = 16; break;
+				case 62: x = 48; break;
+				case 91: x = 1; break;
+				case 93: x = 3; break;
+			}
+		} else {
+			switch(*c) {
+				case 43: x = 64; break;
+				case 44: x = 8; break;
+				case 45: x = 192; break;
+				case 46: x = 4; break;
+				//case 91: x = 1; break;
+				//case 93: x = 3; break;
+				//case 46: x = 4; break;
+				//case 44: x = 8; break;
+				case 60: x = 16; break;
+				case 62: x = 48; break;
+				case 91: x = 1; break;
+				case 93: x = 3; break;
+			}
+		}
+
+		if(x == u[i]) {
+			printf("%c (%3d) => %3d (OK)\n", t[i], (int)(t[i]), x);
+		} else {
+			printf("%c (%3d) => %3d (should be %d)\n", t[i], (int)(t[i]), x, u[i]);
+		}
+	}
+	return 0;
 	char memory[30000] = {0};
 
 	memset(buffer, 0, 256); pstring = buffer;
